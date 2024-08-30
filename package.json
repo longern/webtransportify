@@ -1,0 +1,10 @@
+{
+  "name": "webtransportify",
+  "version": "0.0.1",
+  "author": "longern <i@longern.com>",
+  "dependencies": {
+    "@fails-components/webtransport": "^1.1.3",
+    "@fails-components/webtransport-transport-http3-quiche": "^1.1.3"
+  },
+  "type": "module"
+}

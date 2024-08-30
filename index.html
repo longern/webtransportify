@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      const registerServiceWorker = async () => {
+        try {
+          const oldRegistration =
+            await navigator.serviceWorker.getRegistration();
+          if (oldRegistration) {
+            document.getElementById("root").style.display = "flex";
+            return;
+          }
+
+          const registration = await navigator.serviceWorker.register(
+            "/sw.js",
+            { scope: "/" }
+          );
+          setTimeout(() => {
+            window.location.reload();
+          }, 4);
+        } catch (error) {
+          document.write(`Registration failed with ${error}`);
+        }
+      };
+
+      function redirectToUrl() {
+        const targetUrl = document.getElementById("url").value;
+        const sch = document.getElementById("sch").value;
+        const sch2 = document.getElementById("sch2").value;
+        if (!targetUrl) {
+          document.getElementById("url").focus();
+          return;
+        }
+        const url = new URL(window.location.href);
+        url.searchParams.set("wturl", targetUrl);
+        const schs = [];
+        if (sch) schs.push(sch);
+        if (sch2) schs.push(sch2);
+        if (schs.length) url.searchParams.set("wtsch", schs.join(","));
+        window.location.href = url.href;
+      }
+
+      registerServiceWorker();
+    </script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      #root {
+        height: 100%;
+        padding: 16px;
+        display: none;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 24px;
+      }
+      formgroup {
+        width: 100%;
+        max-width: 400px;
+        display: flex;
+        align-items: center;
+      }
+      formgroup > * {
+        flex-basis: 50%;
+      }
+      input[type="text"] {
+        padding: 8px;
+      }
+      button {
+        background-color: #4caf50;
+        color: white;
+        padding: 12px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root">
+      <formgroup>
+        <label for="url">URL *</label>
+        <input type="text" id="url" required />
+      </formgroup>
+      <formgroup>
+        <label for="sch">Certificate Hash</label>
+        <input type="text" id="sch" />
+      </formgroup>
+      <formgroup>
+        <label for="sch">Certificate Hash Alt</label>
+        <input type="text" id="sch2" />
+      </formgroup>
+      <button onclick="redirectToUrl()">Redirect</button>
+    </div>
+  </body>
+</html>
