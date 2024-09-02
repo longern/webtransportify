@@ -29,6 +29,7 @@
         const targetUrl = document.getElementById("url").value;
         const sch = document.getElementById("sch").value;
         const sch2 = document.getElementById("sch2").value;
+        const host = document.getElementById("host").value;
         if (!targetUrl) {
           document.getElementById("url").focus();
           return;
@@ -39,6 +40,7 @@
         if (sch) schs.push(sch);
         if (sch2) schs.push(sch2);
         if (schs.length) url.searchParams.set("wtsch", schs.join(","));
+        if (host) url.searchParams.set("wthost", host);
         window.location.href = url.href;
       }
 
@@ -61,6 +63,7 @@
         justify-content: center;
         align-items: center;
         gap: 24px;
+        font-family: Arial, sans-serif;
       }
       formgroup {
         width: 100%;
@@ -100,8 +103,12 @@
         <input type="text" id="sch" />
       </formgroup>
       <formgroup>
-        <label for="sch">Certificate Hash Alt</label>
+        <label for="sch2">Certificate Hash Alt</label>
         <input type="text" id="sch2" />
+      </formgroup>
+      <formgroup>
+        <label for="host">Rewrite Host</label>
+        <input type="text" id="host" />
       </formgroup>
       <button onclick="redirectToUrl()">Redirect</button>
     </div>

@@ -60,9 +60,18 @@ async function readStreamLoop(session) {
 }
 
 async function sessionStreamLoop(sessionStream) {
-  for await (const session of sessionStream) {
-    session.ready.then(() => readStreamLoop(session));
+  try {
+    for await (const session of sessionStream) {
+      session.ready.then(() => readStreamLoop(session));
+    }
+  } catch (e) {
+    console.log("Session stream loop error:", e);
+    throw e;
   }
+}
+
+function notifyCertUpdate(hash) {
+  console.log("Cert hash:", hash.toString("base64"));
 }
 
 async function main() {
@@ -76,7 +85,7 @@ async function main() {
 
   console.log();
   console.log("URL:", `127.0.0.1:${port}`);
-  console.log("Cert hash:", hash.toString("base64"));
+  notifyCertUpdate(hash);
 
   const server = new Http3Server({
     port,
@@ -91,6 +100,12 @@ async function main() {
   const sessionStream = server.sessionStream("/");
 
   sessionStreamLoop(sessionStream);
+
+  setInterval(() => {
+    const { cert, privKey, hash } = createCertificate();
+    notifyCertUpdate(hash);
+    server.updateCert(cert, privKey);
+  }, 1000 * 60 * 60 * 24 * 13);
 
   server.startServer();
 }

@@ -18,15 +18,23 @@ function base64ToArrayBuffer(base64) {
  * @returns ReadableStream
  */
 function encodeHttpRequest(request) {
-  const headers = `${request.method} ${request.url} HTTP/1.1\r\n${[
-    ...request.headers,
-  ]
+  const url = new URL(request.url);
+  const host = url.searchParams.get("wthost") || url.host;
+  url.searchParams.delete("wturl");
+  url.searchParams.delete("wtsch");
+  url.searchParams.delete("wthost");
+  const pathname = url.pathname || "/";
+  const headers = new Headers(request.headers);
+  headers.set("Host", host);
+  const httpHeaders = `${request.method} ${pathname} HTTP/1.1\r\n${Array.from(
+    headers
+  )
     .map(([name, value]) => `${name}: ${value}`)
     .join("\r\n")}\r\n\r\n`;
 
   const transformer = new TransformStream({
     start(controller) {
-      controller.enqueue(new TextEncoder().encode(headers));
+      controller.enqueue(new TextEncoder().encode(httpHeaders));
     },
     transform(chunk, controller) {
       controller.enqueue(chunk);
