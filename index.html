@@ -5,11 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script>
       const registerServiceWorker = async () => {
+        const searchParams = new URLSearchParams(window.location.search);
+        const showRoot = () => {
+          document.getElementById("root").style.display = "flex";
+          document.getElementById("url").value = searchParams.get("wturl");
+          const schs = (searchParams.get("wtsch") ?? "").split(",");
+          document.getElementById("sch").value = schs[0] ?? "";
+          document.getElementById("sch2").value = schs[1] ?? "";
+          document.getElementById("host").value = searchParams.get("wthost");
+          if (searchParams.has("wterror"))
+            setTimeout(() => alert(searchParams.get("wterror")), 50);
+        };
+
         try {
           const oldRegistration =
             await navigator.serviceWorker.getRegistration();
-          if (oldRegistration) {
-            document.getElementById("root").style.display = "flex";
+          if (oldRegistration || searchParams.has("wterror")) {
+            if (document.readyState !== "loading") showRoot();
+            else document.addEventListener("DOMContentLoaded", showRoot);
             return;
           }
 
@@ -17,9 +30,7 @@
             "/sw.js",
             { scope: "/" }
           );
-          setTimeout(() => {
-            window.location.reload();
-          }, 4);
+          window.location.reload();
         } catch (error) {
           document.write(`Registration failed with ${error}`);
         }
@@ -41,6 +52,7 @@
         if (sch2) schs.push(sch2);
         if (schs.length) url.searchParams.set("wtsch", schs.join(","));
         if (host) url.searchParams.set("wthost", host);
+        url.searchParams.delete("wterror");
         window.location.href = url.href;
       }
 

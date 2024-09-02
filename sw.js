@@ -147,7 +147,12 @@ self.addEventListener("fetch", async (event) => {
   const { url: webTransportUrl, serverCertificateHashes } =
     detectUrlAndCertificate(request);
 
-  if (url.origin !== self.location.origin || !webTransportUrl) return;
+  if (
+    url.origin !== self.location.origin ||
+    !webTransportUrl ||
+    url.searchParams.has("wterror")
+  )
+    return;
 
   event.respondWith(
     (async () => {
@@ -166,8 +171,17 @@ self.addEventListener("fetch", async (event) => {
         const response = await decodeHttpResponse(stream.readable);
         return response;
       } catch (e) {
-        console.error(e);
-        return fetch(request);
+        if (url.searchParams.has("wturl")) {
+          url.searchParams.set("wterror", e.message);
+          return new Response(null, {
+            status: 302,
+            headers: { Location: url.toString() },
+          });
+        }
+        return new Response(e.message, {
+          status: 502,
+          statusText: "Bad Gateway",
+        });
       }
     })()
   );
