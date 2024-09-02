@@ -108,44 +108,50 @@ async function decodeHttpResponse(readable) {
   return response;
 }
 
-self.addEventListener("fetch", async (event) => {
-  const request = event.request;
-  const url = new URL(request.url);
+/** @param {string} url */
+function addHttpsPrefix(url) {
+  return url.startsWith("https://") ? url : `https://${url}`;
+}
 
-  function detectUrlAndCertificate() {
-    const url = new URL(request.url);
+/** @param {Request} request */
+function detectUrlAndCertificate(request) {
+  const url = new URL(request.url);
+  const wturl = url.searchParams.get("wturl");
+  const wtsch = (url.searchParams.get("wtsch") ?? "").split(",");
+  if (wturl && wtsch.length) {
+    return {
+      url: addHttpsPrefix(wturl),
+      serverCertificateHashes: wtsch,
+    };
+  }
+
+  if (request.referrer) {
+    const url = new URL(request.referrer);
     const wturl = url.searchParams.get("wturl");
     const wtsch = (url.searchParams.get("wtsch") ?? "").split(",");
     if (wturl && wtsch.length) {
       return {
-        url: wturl,
+        url: addHttpsPrefix(wturl),
         serverCertificateHashes: wtsch,
       };
     }
-
-    if (request.referrer) {
-      const url = new URL(request.referrer);
-      const wturl = url.searchParams.get("wturl");
-      const wtsch = (url.searchParams.get("wtsch") ?? "").split(",");
-      if (wturl && wtsch.length) {
-        return {
-          url: wturl,
-          serverCertificateHashes: wtsch,
-        };
-      }
-    }
-
-    return { url: null, serverCertificateHashes: null };
   }
 
+  return { url: null, serverCertificateHashes: null };
+}
+
+self.addEventListener("fetch", async (event) => {
+  const request = event.request;
+  const url = new URL(request.url);
+
   const { url: webTransportUrl, serverCertificateHashes } =
-    detectUrlAndCertificate();
+    detectUrlAndCertificate(request);
 
   if (url.origin !== self.location.origin || !webTransportUrl) return;
 
   event.respondWith(
     (async () => {
-      const wt = new WebTransport(`https://${webTransportUrl}`, {
+      const wt = new WebTransport(webTransportUrl, {
         serverCertificateHashes: serverCertificateHashes.map((hash) => ({
           algorithm: "sha-256",
           value: base64ToArrayBuffer(hash),

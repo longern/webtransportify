@@ -81,7 +81,7 @@ async function main() {
   }
 
   const { cert, privKey, hash } = createCertificate();
-  const port = 24433;
+  const port = 34433;
 
   console.log();
   console.log("URL:", `127.0.0.1:${port}`);
