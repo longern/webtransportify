@@ -151,6 +151,10 @@ async function fetchThroughWebTransport(
   request,
   { url, serverCertificateHashes }
 ) {
+  const cache = await caches.open("webtransportify");
+  const cachedResponse = await cache.match(request);
+  if (cachedResponse) return cachedResponse;
+
   const wt = new WebTransport(url, {
     serverCertificateHashes: serverCertificateHashes.map((hash) => ({
       algorithm: "sha-256",
@@ -164,6 +168,8 @@ async function fetchThroughWebTransport(
     const stream = await wt.createBidirectionalStream();
     encodeHttpRequest(request).pipeTo(stream.writable);
     const response = await decodeHttpResponse(stream.readable);
+    if (!response.headers.get("content-type")?.startsWith("text/html"))
+      cache.put(request, response.clone());
     return response;
   } catch (e) {
     const url = new URL(request.url);
