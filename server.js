@@ -1,6 +1,6 @@
 import { Http3Server } from "@fails-components/webtransport";
 import { execSync } from "child_process";
-import { X509Certificate } from "crypto";
+import { X509Certificate, randomUUID } from "crypto";
 import fs from "fs";
 import net from "net";
 
@@ -19,16 +19,32 @@ openssl req -new \
 function createCertificate() {
   execSync(CREATE_CERTIFICATE_COMMAND);
 
-  const cert = fs.readFileSync("./cert.pem");
+  const certFile = fs.readFileSync("./cert.pem");
   const privKey = fs.readFileSync("./key.pem");
+  const cert = new X509Certificate(certFile);
 
   const hash = Buffer.from(
-    new X509Certificate(cert).fingerprint256
-      .split(":")
-      .map((el) => parseInt(el, 16))
+    cert.fingerprint256.split(":").map((el) => parseInt(el, 16))
   );
 
-  return { cert, privKey, hash };
+  return { cert: certFile, privKey, hash };
+}
+
+function reuseOrCreateCertificate() {
+  try {
+    const certFile = fs.readFileSync("./cert.pem");
+    const privKey = fs.readFileSync("./key.pem");
+    const cert = new X509Certificate(certFile);
+    if (new Date(cert.validTo) < new Date()) throw new Error("Expired");
+
+    const hash = Buffer.from(
+      cert.fingerprint256.split(":").map((el) => parseInt(el, 16))
+    );
+
+    return { cert: certFile, privKey, hash };
+  } catch (e) {
+    return createCertificate();
+  }
 }
 
 /**
@@ -97,7 +113,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { cert, privKey, hash } = createCertificate();
+  const { cert, privKey, hash } = reuseOrCreateCertificate();
   const port = 34433;
 
   console.log();
@@ -107,9 +123,9 @@ async function main() {
   const server = new Http3Server({
     port,
     host: "0.0.0.0",
-    secret: "mysecret",
-    cert: cert,
-    privKey: privKey,
+    secret: randomUUID(),
+    cert,
+    privKey,
   });
 
   await server.createTransportInt();
