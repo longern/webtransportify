@@ -1,8 +1,8 @@
+import { Http3Server } from "@fails-components/webtransport";
+import { execSync } from "child_process";
 import { X509Certificate } from "crypto";
 import fs from "fs";
 import net from "net";
-import { execSync } from "child_process";
-import { Http3Server } from "@fails-components/webtransport";
 
 const CREATE_CERTIFICATE_COMMAND = `\
 openssl req -new \
@@ -31,50 +31,67 @@ function createCertificate() {
   return { cert, privKey, hash };
 }
 
-const tcpPort = process.argv[2];
-
-async function readStreamLoop(session) {
-  const tcpClient = new net.Socket();
+/**
+ * @param {WebTransport} session
+ * @param {{
+ *   protocol: "tcp" | "udp"
+ *   port: number
+ * }} options
+ */
+async function readStreamLoop(
+  session,
+  { port, host = undefined, socketTimeout = 3000 }
+) {
+  const client = new net.Socket();
 
   try {
     await new Promise((resolve, reject) => {
-      tcpClient.connect(tcpPort, resolve);
-      setTimeout(reject, 3000);
+      host
+        ? client.connect(port, host, () => resolve(undefined))
+        : client.connect(port, () => resolve(undefined));
+      setTimeout(reject, socketTimeout);
     });
   } catch (e) {
-    const datagramWriter = session.datagram.writable.getWriter();
-    datagramWriter.write(new TextEncoder().encode("ERR_CONNECTION_REFUSED"));
+    console.error("TCP connection error:", e);
     session.close();
   }
 
+  session.closed.finally(() => client.destroySoon());
+  client.on("end", () => session.close());
+
   try {
+    /** @type {ReadableStreamDefaultReader<WebTransportBidirectionalStream>} */
     const streamReader = session.incomingBidirectionalStreams.getReader();
     const { value: stream, done } = await streamReader.read();
     if (done) return;
     const writer = stream.writable.getWriter();
-    tcpClient.on("data", (data) => writer.write(data));
-    tcpClient.on("end", () => writer.close());
+    const writeChunk = (data) => writer.write(data);
+    client.on("data", writeChunk);
+    client.on("end", () => writer.close());
+    session.closed.finally(() => client.off("data", writeChunk));
 
-    for await (const chunk of stream.readable) tcpClient.write(chunk);
+    for await (const chunk of stream.readable) client.write(chunk);
   } catch (e) {}
 }
 
-async function sessionStreamLoop(sessionStream) {
-  try {
-    for await (const session of sessionStream) {
-      session.ready.then(() => readStreamLoop(session));
-    }
-  } catch (e) {
-    console.log("Session stream loop error:", e);
-    throw e;
+/**
+ * @param {ReadableStream<WebTransport>} sessionStream
+ * @param {Parameters<typeof readStreamLoop>[1]} options
+ */
+async function sessionStreamLoop(sessionStream, options) {
+  for await (const session of sessionStream) {
+    session.ready.then(() => readStreamLoop(session, options));
   }
 }
 
+/** @param {Buffer} hash */
 function notifyCertUpdate(hash) {
   console.log("Cert hash:", hash.toString("base64"));
 }
 
 async function main() {
+  const tcpPort = process.argv[2];
+
   if (!tcpPort) {
     console.log("Usage: node server.js <tcp-port>");
     process.exit(1);
@@ -99,7 +116,7 @@ async function main() {
 
   const sessionStream = server.sessionStream("/");
 
-  sessionStreamLoop(sessionStream);
+  sessionStreamLoop(sessionStream, { port: tcpPort });
 
   setInterval(() => {
     const { cert, privKey, hash } = createCertificate();

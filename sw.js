@@ -46,6 +46,13 @@ function encodeHttpRequest(request) {
   return body.pipeThrough(transformer);
 }
 
+/**
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} timeout
+ * @param {string} message
+ * @returns {Promise<T>}
+ */
 function timeoutWrapper(promise, timeout, message = "Timeout") {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -56,7 +63,7 @@ function timeoutWrapper(promise, timeout, message = "Timeout") {
 }
 
 /**
- * @param {ReadableStream} readable
+ * @param {ReadableStream<ArrayBuffer>} readable
  */
 async function decodeHttpResponse(readable) {
   const reader = readable.getReader();
@@ -82,7 +89,7 @@ async function decodeHttpResponse(readable) {
     Object.fromEntries(headerLines.map((line) => line.split(": ", 2)))
   );
 
-  const contentLength = parseInt(headers.get("Content-Length"));
+  const contentLength = parseInt(headers.get("Content-Length") ?? "0");
   let lengthRead = rest.length;
   const body = new ReadableStream({
     start(controller) {
@@ -140,6 +147,40 @@ function detectUrlAndCertificate(request) {
   return { url: null, serverCertificateHashes: null };
 }
 
+async function fetchThroughWebTransport(
+  request,
+  { url, serverCertificateHashes }
+) {
+  const wt = new WebTransport(url, {
+    serverCertificateHashes: serverCertificateHashes.map((hash) => ({
+      algorithm: "sha-256",
+      value: base64ToArrayBuffer(hash),
+    })),
+  });
+
+  try {
+    await timeoutWrapper(wt.ready, 10000, "WebTransport timeout");
+
+    const stream = await wt.createBidirectionalStream();
+    encodeHttpRequest(request).pipeTo(stream.writable);
+    const response = await decodeHttpResponse(stream.readable);
+    return response;
+  } catch (e) {
+    const url = new URL(request.url);
+    if (url.searchParams.has("wturl")) {
+      url.searchParams.set("wterror", e.message);
+      return new Response(null, {
+        status: 302,
+        headers: { Location: url.toString() },
+      });
+    }
+    return new Response(e.message, {
+      status: 502,
+      statusText: "Bad Gateway",
+    });
+  }
+}
+
 self.addEventListener("fetch", async (event) => {
   const request = event.request;
   const url = new URL(request.url);
@@ -155,34 +196,18 @@ self.addEventListener("fetch", async (event) => {
     return;
 
   event.respondWith(
-    (async () => {
-      const wt = new WebTransport(webTransportUrl, {
-        serverCertificateHashes: serverCertificateHashes.map((hash) => ({
-          algorithm: "sha-256",
-          value: base64ToArrayBuffer(hash),
-        })),
+    timeoutWrapper(
+      fetchThroughWebTransport(request, {
+        url: webTransportUrl,
+        serverCertificateHashes,
+      }),
+      15000,
+      "Request timeout"
+    ).catch((e) => {
+      return new Response(e.message, {
+        status: 502,
+        statusText: "Bad Gateway",
       });
-
-      try {
-        await timeoutWrapper(wt.ready, 10000, "WebTransport timeout");
-
-        const stream = await wt.createBidirectionalStream();
-        encodeHttpRequest(request).pipeTo(stream.writable);
-        const response = await decodeHttpResponse(stream.readable);
-        return response;
-      } catch (e) {
-        if (url.searchParams.has("wturl")) {
-          url.searchParams.set("wterror", e.message);
-          return new Response(null, {
-            status: 302,
-            headers: { Location: url.toString() },
-          });
-        }
-        return new Response(e.message, {
-          status: 502,
-          statusText: "Bad Gateway",
-        });
-      }
-    })()
+    })
   );
 });
