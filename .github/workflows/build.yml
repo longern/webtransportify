@@ -1,0 +1,33 @@
+name: Build
+on: [push]
+jobs:
+  release:
+    name: Release - ${{ matrix.platform.release_for }}
+    strategy:
+      matrix:
+        platform:
+          - release_for: linux-aarch64
+            os: ubuntu-22.04
+            target: aarch64-unknown-linux-musl
+            bin: webtransportify
+            name: webtransportify-linux-aarch64.tar.gz
+            command: build
+
+    runs-on: ${{ matrix.platform.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build binary
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          command: ${{ matrix.platform.command }}
+          target: ${{ matrix.platform.target }}
+          args: "--locked --release"
+          strip: true
+      - name: Archive binary
+        run: tar -czf ${{ matrix.platform.name }} target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform.name }}
+          path: ${{ matrix.platform.name }}
