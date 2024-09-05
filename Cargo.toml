@@ -1,0 +1,10 @@
+[package]
+name = "webtransportify"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+base64 = "0.22.1"
+clap = { version = "4.0", features = ["derive"] }
+tokio = { version = "1.40.0", features = ["rt", "rt-multi-thread", "macros"] }
+wtransport = "0.2.0"

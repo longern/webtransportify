@@ -19,9 +19,9 @@ You can use this tool to securely visit your server through WebTransport tunnel.
 Run the server along with the target server.
 
 ```bash
-npm install
-node server.js <target_port>
+cargo run -r -- 80
 ```
+
 Certificate hash will be printed to the console.
 
 Then visit the demo page. Set the `URL` to `<your_ip>:34433` and `Certificate Hash` to the hash printed.

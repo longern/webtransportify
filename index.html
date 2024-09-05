@@ -23,6 +23,9 @@
           if (oldRegistration || searchParams.has("wterror")) {
             if (document.readyState !== "loading") showRoot();
             else document.addEventListener("DOMContentLoaded", showRoot);
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.delete("wterror");
+            window.history.replaceState({}, "", newUrl.href);
             return;
           }
 
