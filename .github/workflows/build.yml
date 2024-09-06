@@ -1,5 +1,10 @@
 name: Build
-on: [push]
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - src/**
 jobs:
   release:
     name: Release - ${{ matrix.platform.release_for }}
