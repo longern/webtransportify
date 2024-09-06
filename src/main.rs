@@ -1,5 +1,8 @@
 use base64::prelude::*;
+use chrono::Local;
 use clap::Parser;
+use env_logger::Builder;
+use std::io::Write;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use wtransport::endpoint::IncomingSession;
@@ -36,7 +39,10 @@ async fn handle_session(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let incoming_request = match session.await {
         Ok(s) => s,
-        Err(_e) => return Ok(()),
+        Err(e) => {
+            log::info!("Connection error: {:?}", e);
+            return Ok(());
+        }
     };
     let connection = incoming_request.accept().await?;
     let mut tcp = TcpStream::connect(target_addr).await?;
@@ -53,6 +59,18 @@ async fn handle_session(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    Builder::from_default_env()
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "{} [{}] - {}",
+                Local::now().format("%Y-%m-%dT%H:%M:%S"),
+                record.level(),
+                record.args()
+            )
+        })
+        .init();
+
     let args = Cli::parse();
 
     let cert_exists =
@@ -77,12 +95,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     loop {
         let incoming_session = server.accept().await;
+        log::trace!("Incoming session: {}", incoming_session.remote_address());
         let target_addr_arc = Arc::clone(&target_addr);
         tokio::spawn(async move {
             handle_session(incoming_session, &target_addr_arc)
                 .await
                 .unwrap_or_else(|e| {
-                    eprintln!("Error: {:?}", e);
+                    log::error!("Error: {:?}", e);
                 });
         });
     }
