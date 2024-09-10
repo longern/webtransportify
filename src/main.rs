@@ -3,35 +3,58 @@ use chrono::Local;
 use clap::Parser;
 use env_logger::Builder;
 use std::io::Write;
+use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpStream;
+use wtransport::endpoint::endpoint_side::Server;
 use wtransport::endpoint::IncomingSession;
 use wtransport::stream::BiStream;
 use wtransport::Endpoint;
 use wtransport::Identity;
 use wtransport::ServerConfig;
-
-async fn save_self_signed_cert() -> Result<Identity, Box<dyn std::error::Error>> {
-    let identity = Identity::self_signed(&["localhost", "127.0.0.1", ":1"])?;
-    identity
-        .certificate_chain()
-        .store_pemfile("cert.pem")
-        .await?;
-    identity
-        .private_key()
-        .store_secret_pemfile("key.pem")
-        .await?;
-    Ok(identity)
-}
+use x509_parser::prelude::FromDer;
+use x509_parser::prelude::X509Certificate;
 
 #[derive(Parser)]
 struct Cli {
-    /// [ip]:port to forward traffic to
+    /// [ip:]port to forward traffic to
     target: String,
 
     /// Port to listen on
     #[arg(long, default_value_t = 34433)]
     port: u16,
+
+    /// Certificate file. If not provided, a self-signed certificate will be generated
+    #[arg(long)]
+    cert: Option<String>,
+
+    /// Private key file
+    #[arg(long)]
+    key: Option<String>,
+
+    /// Webhook to call when the certificate is renewed
+    #[arg(long)]
+    cert_webhook: Option<String>,
+}
+
+async fn save_self_signed_cert() -> Result<Identity, Box<dyn std::error::Error>> {
+    if Path::new("cert.pem").is_file() && Path::new("key.pem").is_file() {
+        let identify_from_file = Identity::load_pemfiles("cert.pem", "key.pem").await?;
+        return Ok(identify_from_file);
+    }
+
+    let self_signed_identity = Identity::self_signed(&["localhost", "127.0.0.1", ":1"])?;
+    let cert_future = self_signed_identity
+        .certificate_chain()
+        .store_pemfile("cert.pem");
+    let key_future = self_signed_identity
+        .private_key()
+        .store_secret_pemfile("key.pem");
+    if let Err(e) = tokio::try_join!(cert_future, key_future) {
+        log::warn!("Error saving certificate: {:?}", e);
+    }
+    Ok(self_signed_identity)
 }
 
 async fn handle_session(
@@ -49,17 +72,59 @@ async fn handle_session(
     let mut tcp = TcpStream::connect(target_addr).await?;
     let bidi = connection.accept_bi().await?;
     let mut bistream = BiStream::join(bidi);
-    tokio::io::copy_bidirectional(&mut tcp, &mut bistream)
-        .await
-        .or_else(|e| match e.kind() == std::io::ErrorKind::NotConnected {
-            true => Ok((0, 0)),
-            false => Err(e),
-        })?;
+    let copy_result = tokio::io::copy_bidirectional(&mut tcp, &mut bistream).await;
+    if let Err(e) = copy_result {
+        if e.kind() != std::io::ErrorKind::NotConnected {
+            return Err(e.into());
+        };
+    }
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn session_loop(server: Arc<Endpoint<Server>>, target_addr: String) {
+    let arc_target_addr = Arc::new(target_addr);
+
+    loop {
+        let incoming_session = server.accept().await;
+        log::trace!("Incoming session: {}", incoming_session.remote_address());
+        let target_addr_arc = Arc::clone(&arc_target_addr);
+        tokio::spawn(async move {
+            if let Err(e) = handle_session(incoming_session, &target_addr_arc).await {
+                log::error!("Error: {:?}", e);
+            }
+        });
+    }
+}
+
+async fn renew_cert_loop(initial_identity: Identity, callback: impl Fn(&Identity)) {
+    let mut identity: Identity = initial_identity;
+
+    loop {
+        let cert_chain = identity.certificate_chain();
+        let cert = cert_chain.as_slice().get(0).unwrap();
+        let (_, x509) = X509Certificate::from_der(cert.der()).unwrap();
+        let is_valid = x509.validity.is_valid();
+
+        if is_valid {
+            let not_after = x509.validity.not_after.timestamp();
+            let now = chrono::Utc::now().timestamp();
+            let secs = (not_after - now - 30).max(0) as u64;
+            log::debug!("Certificate is valid for {} seconds", secs);
+            tokio::time::sleep(Duration::from_secs(secs)).await;
+        }
+
+        log::info!("Renewing certificate");
+        let new_identity = save_self_signed_cert().await.unwrap();
+        let cert_chain = new_identity.certificate_chain();
+        let cert = cert_chain.as_slice().get(0).unwrap();
+        let cert_hash = BASE64_STANDARD.encode(cert.hash().as_ref());
+        log::info!("Cert hash: {}", cert_hash);
+        callback(&new_identity);
+        identity = new_identity;
+    }
+}
+
+fn build_logger() {
     Builder::from_default_env()
         .format(|buf, record| {
             writeln!(
@@ -71,26 +136,76 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
         })
         .init();
+}
+
+fn cert_callback_wrapper(
+    arc_server: Arc<Endpoint<Server>>,
+    port: u16,
+    cert_webhook: Option<String>,
+    is_new_cert: bool,
+) -> impl Fn(&Identity) {
+    return move |identity: &Identity| {
+        let cert_chain = identity.certificate_chain();
+        let cert = cert_chain.as_slice().get(0).unwrap();
+        let cert_hash = BASE64_STANDARD.encode(cert.hash().as_ref());
+        println!("Cert hash: {}", cert_hash);
+        if !is_new_cert {
+            return;
+        }
+
+        let new_config = ServerConfig::builder()
+            .with_bind_default(port)
+            .with_identity(&identity)
+            .build();
+        arc_server.reload_config(new_config, false).unwrap();
+
+        if let Some(webhook) = &cert_webhook {
+            let client = reqwest::Client::new();
+            let future = client.post(webhook).body(cert_hash).send();
+            tokio::spawn(async {
+                match future.await {
+                    Ok(_) => log::info!("Webhook called"),
+                    Err(e) => log::error!("Webhook error: {:?}", e),
+                }
+            });
+        }
+    };
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    build_logger();
 
     let args = Cli::parse();
 
-    let cert_exists =
-        std::path::Path::new("cert.pem").exists() && std::path::Path::new("key.pem").exists();
-    // if file not found, generate new cert and key
-    let identity = match cert_exists {
-        true => Identity::load_pemfiles("cert.pem", "key.pem").await?,
-        false => save_self_signed_cert().await?,
+    let cert_key = Option::zip(args.cert, args.key);
+    let identity = match cert_key {
+        Some((ref cert, ref key)) => Identity::load_pemfiles(cert, key).await?,
+        None => save_self_signed_cert().await?,
     };
     let config = ServerConfig::builder()
         .with_bind_default(args.port)
         .with_identity(&identity)
         .build();
-    let cert_chain = identity.certificate_chain();
-    let cert = cert_chain.as_slice().get(0).unwrap();
-    let cert_hash = BASE64_STANDARD.encode(cert.hash().as_ref());
-    println!("Listening on port {}\nCert hash: {}", args.port, cert_hash);
-
     let server = Endpoint::server(config)?;
+    let arc_server = Arc::new(server);
+    println!(
+        "Listening on port {}, forwarding to {}",
+        args.port, args.target
+    );
+
+    let cert_callback = cert_callback_wrapper(
+        arc_server.clone(),
+        args.port,
+        args.cert_webhook.clone(),
+        false,
+    );
+    cert_callback(&identity);
+    if cert_key.is_none() {
+        let cert_callback =
+            cert_callback_wrapper(arc_server.clone(), args.port, args.cert_webhook, true);
+        tokio::spawn(renew_cert_loop(identity.clone_identity(), cert_callback));
+    }
 
     let target_addr = if args.target.parse::<u16>().is_ok() {
         format!("127.0.0.1:{}", args.target)
@@ -98,18 +213,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.target
     };
 
-    let arc_target_addr = Arc::new(target_addr);
+    session_loop(arc_server.clone(), target_addr).await;
 
-    loop {
-        let incoming_session = server.accept().await;
-        log::trace!("Incoming session: {}", incoming_session.remote_address());
-        let target_addr_arc = Arc::clone(&arc_target_addr);
-        tokio::spawn(async move {
-            handle_session(incoming_session, &target_addr_arc)
-                .await
-                .unwrap_or_else(|e| {
-                    log::error!("Error: {:?}", e);
-                });
-        });
-    }
+    Ok(())
 }
