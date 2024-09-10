@@ -26,7 +26,8 @@ async fn save_self_signed_cert() -> Result<Identity, Box<dyn std::error::Error>>
 
 #[derive(Parser)]
 struct Cli {
-    target_port: u16,
+    /// [ip]:port to forward traffic to
+    target: String,
 
     /// Port to listen on
     #[arg(long, default_value_t = 34433)]
@@ -91,12 +92,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let server = Endpoint::server(config)?;
 
-    let target_addr = Arc::new(format!("127.0.0.1:{}", args.target_port));
+    let target_addr = if args.target.parse::<u16>().is_ok() {
+        format!("127.0.0.1:{}", args.target)
+    } else {
+        args.target
+    };
+
+    let arc_target_addr = Arc::new(target_addr);
 
     loop {
         let incoming_session = server.accept().await;
         log::trace!("Incoming session: {}", incoming_session.remote_address());
-        let target_addr_arc = Arc::clone(&target_addr);
+        let target_addr_arc = Arc::clone(&arc_target_addr);
         tokio::spawn(async move {
             handle_session(incoming_session, &target_addr_arc)
                 .await
