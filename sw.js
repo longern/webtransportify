@@ -168,7 +168,10 @@ async function fetchThroughWebTransport(
     const stream = await wt.createBidirectionalStream();
     encodeHttpRequest(request).pipeTo(stream.writable);
     const response = await decodeHttpResponse(stream.readable);
-    if (!response.headers.get("content-type")?.startsWith("text/html"))
+    if (
+      response.ok &&
+      !response.headers.get("content-type")?.startsWith("text/html")
+    )
       cache.put(request, response.clone());
     return response;
   } catch (e) {
