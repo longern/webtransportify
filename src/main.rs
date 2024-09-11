@@ -44,7 +44,7 @@ async fn save_self_signed_cert() -> Result<Identity, Box<dyn std::error::Error>>
         return Ok(identify_from_file);
     }
 
-    let self_signed_identity = Identity::self_signed(&["localhost", "127.0.0.1", ":1"])?;
+    let self_signed_identity = Identity::self_signed(&["localhost", "127.0.0.1", "::1"])?;
     let cert_future = self_signed_identity
         .certificate_chain()
         .store_pemfile("cert.pem");
