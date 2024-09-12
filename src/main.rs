@@ -16,27 +16,8 @@ use wtransport::ServerConfig;
 use x509_parser::prelude::FromDer;
 use x509_parser::prelude::X509Certificate;
 
-#[derive(Parser)]
-struct Cli {
-    /// [ip:]port to forward traffic to
-    target: String,
-
-    /// Port to listen on
-    #[arg(long, default_value_t = 34433)]
-    port: u16,
-
-    /// Certificate file. If not provided, a self-signed certificate will be generated
-    #[arg(long)]
-    cert: Option<String>,
-
-    /// Private key file
-    #[arg(long)]
-    key: Option<String>,
-
-    /// Webhook to call when the certificate is renewed
-    #[arg(long)]
-    cert_webhook: Option<String>,
-}
+mod cli;
+mod client;
 
 async fn save_self_signed_cert() -> Result<Identity, Box<dyn std::error::Error>> {
     if Path::new("cert.pem").is_file() && Path::new("key.pem").is_file() {
@@ -162,7 +143,7 @@ fn cert_callback_wrapper(
         if let Some(webhook) = &cert_webhook {
             let client = reqwest::Client::new();
             let future = client.post(webhook).body(cert_hash).send();
-            tokio::spawn(async {
+            tokio::task::spawn_local(async {
                 match future.await {
                     Ok(_) => log::info!("Webhook called"),
                     Err(e) => log::error!("Webhook error: {:?}", e),
@@ -176,7 +157,11 @@ fn cert_callback_wrapper(
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     build_logger();
 
-    let args = Cli::parse();
+    let args = cli::Cli::parse();
+
+    if args.client {
+        return client::main().await;
+    }
 
     let cert_key = Option::zip(args.cert, args.key);
     let identity = match cert_key {
@@ -204,7 +189,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if cert_key.is_none() {
         let cert_callback =
             cert_callback_wrapper(arc_server.clone(), args.port, args.cert_webhook, true);
-        tokio::spawn(renew_cert_loop(identity.clone_identity(), cert_callback));
+        tokio::task::spawn(renew_cert_loop(identity, cert_callback));
     }
 
     let target_addr = if args.target.parse::<u16>().is_ok() {

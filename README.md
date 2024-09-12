@@ -27,3 +27,9 @@ Certificate hash will be printed to the console.
 Then visit the demo page. Set the `URL` to `<your_ip>:34433` and `Certificate Hash` to the hash printed.
 
 Click `Connect` and you should see the target server's response.
+
+Test the client by running the following command:
+
+```
+cargo run -r -- 127.0.0.1:34433 --client --port 34480 --sch <hash_printed>
+```
