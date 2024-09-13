@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script>
+      const registerServiceWorker = async () => {
+        const registration = await navigator.serviceWorker.register("/sw.js", {
+          scope: "/",
+        });
+        window.location.reload();
+      };
+      registerServiceWorker();
+    </script>
+  </head>
+</html>
