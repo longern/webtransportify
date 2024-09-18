@@ -1,3 +1,5 @@
+let basicAuthTokens = {};
+
 self.addEventListener("install", () => {
   self.skipWaiting();
 });
@@ -52,12 +54,12 @@ function encodeHttpRequest(request) {
   const headers = new Headers(request.headers);
 
   headers.set("Host", host);
-  if (url.username || url.password) {
-    headers.set(
-      "Authorization",
-      `Basic ${btoa(`${url.username}:${url.password}`)}`
-    );
-  }
+  if (url.username)
+    basicAuthTokens[url.origin] = `Basic ${btoa(
+      `${url.username}:${url.password}`
+    )}`;
+  if (!headers.has("Authorization") && basicAuthTokens[url.origin])
+    headers.set("Authorization", basicAuthTokens[url.origin]);
 
   const httpHeaders = `${request.method} ${pathname} HTTP/1.1\r\n${Array.from(
     headers
