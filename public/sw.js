@@ -224,13 +224,6 @@ async function fetchThroughWebTransport(
   const cachedResponse = await cache.match(request);
   if (cachedResponse) return cachedResponse;
 
-  if (!("WebTransport" in self)) {
-    return new Response("Safari and old browsers are not supported", {
-      status: 502,
-      statusText: "Bad Gateway",
-    });
-  }
-
   const wt = new WebTransport(url, {
     serverCertificateHashes: serverCertificateHashes.map((hash) => ({
       algorithm: "sha-256",
