@@ -1,3 +1,5 @@
+const DANGEROUSLY_STORE_HTTPONLY_COOKIES = false;
+
 let basicAuthTokens = {};
 
 self.addEventListener("install", () => {
@@ -8,11 +10,14 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(clients.claim());
 });
 
-/**
- * @param {string} base64
- */
+/** @param {string} base64 */
 function base64ToArrayBuffer(base64) {
   return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+}
+
+/** @param {string} str */
+function lowerCaseFirstLetter(str) {
+  return str ? str.charAt(0).toLowerCase() + str.slice(1) : "";
 }
 
 /**
@@ -26,7 +31,10 @@ function createCertificateFetcher() {
       if (certificate.current) return certificate.current;
 
       const cert = await fetch(
-        new URL("/webtransportify/certificates/%40", self.location.origin)
+        new URL(
+          `/webtransportify/certificates/${encodeURIComponent("@")}`,
+          self.location.origin
+        )
       );
       if (!cert.ok) throw new Error("Failed to fetch certificate");
       const json = await cert.json();
@@ -122,7 +130,7 @@ function decodeChunkedTransformer() {
           controller.error(new Error("Invalid chunk size"));
           return;
         }
-        if (chunkSize === 0) return;
+        if (chunkSize === 0) return controller.terminate();
 
         if (buffer.length < newLineIndex + 2 + chunkSize + 2) return;
         controller.enqueue(
@@ -134,10 +142,43 @@ function decodeChunkedTransformer() {
   });
 }
 
-/**
- * @param {ReadableStream<ArrayBuffer>} readable
- * @returns {Promise<Response>}
- */
+/** @param {Headers} headers */
+function storeCookies(headers) {
+  const cookies = headers.getSetCookie
+    ? headers.getSetCookie()
+    : [headers.get("Set-Cookie") ?? ""].filter(Boolean);
+
+  cookies.forEach((cookie) => {
+    const [nameValue, ...properties] = cookie.split("; ");
+
+    // Not possible to store HttpOnly cookies securely
+    if (properties.includes("HttpOnly") && !DANGEROUSLY_STORE_HTTPONLY_COOKIES)
+      return;
+
+    const [name, value] = nameValue.split("=");
+    const cookieOptions = Object.fromEntries(
+      properties.map((property) => {
+        const [name, value] = property.split("=");
+        if (name === "Max-Age")
+          return [
+            "expires",
+            new Date(Date.now() + parseInt(value) * 1000).toUTCString(),
+          ];
+        return [
+          lowerCaseFirstLetter(name),
+          value === undefined ? decodeURIComponent(value) : true,
+        ];
+      })
+    );
+    cookieOptions.expires = cookieOptions.expires
+      ? new Date(cookieOptions.expires).getTime()
+      : null;
+    cookieOptions.sameSite = lowerCaseFirstLetter(cookieOptions.sameSite);
+    self.cookieStore.set({ ...cookieOptions, name, value });
+  });
+}
+
+/** @param {ReadableStream<ArrayBuffer>} readable */
 async function decodeHttpResponse(readable) {
   const reader = readable.getReader();
 
@@ -162,6 +203,8 @@ async function decodeHttpResponse(readable) {
     Object.fromEntries(headerLines.map((line) => line.split(": ", 2)))
   );
 
+  storeCookies(headers);
+
   const contentLength = headers.has("Content-Length")
     ? parseInt(headers.get("Content-Length"))
     : null;
@@ -172,10 +215,7 @@ async function decodeHttpResponse(readable) {
     },
     async pull(controller) {
       const { value, done } = await reader.read();
-      if (done) {
-        controller.close();
-        return;
-      }
+      if (done) return controller.close();
       controller.enqueue(value);
       lengthRead += value.length;
       if (lengthRead >= contentLength) controller.close();
@@ -200,11 +240,10 @@ async function decodeHttpResponse(readable) {
 /**
  * @param {Request} request
  * @param {{ readable: ReadableStream<ArrayBuffer>, writable: WritableStream<ArrayBuffer> }} stream
- * @returns {Promise<Response>}
  */
-async function fetchThroughStream(request, stream) {
+function fetchThroughStream(request, stream) {
   encodeHttpRequest(request).pipeTo(stream.writable);
-  return await decodeHttpResponse(stream.readable);
+  return decodeHttpResponse(stream.readable);
 }
 
 /**
@@ -249,7 +288,7 @@ async function fetchThroughWebTransport(
  * @returns {Promise<Response>}
  */
 async function fetchResponse(request, ctx) {
-  const certObj = await certificateFetcher().catch((e) => null);
+  const certObj = await certificateFetcher().catch(() => null);
   if (!certObj) {
     return new Response("Domain not found", {
       status: 404,

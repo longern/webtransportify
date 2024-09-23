@@ -33,3 +33,11 @@ Test the client by running the following command:
 ```
 cargo run -r -- 127.0.0.1:34433 --client --port 34480 --sch <hash_printed>
 ```
+
+### Limitations
+
+In the demo we use a service worker to proxy requests. That means:
+
+- Basic authentication will not show the login dialog
+- `HttpOnly` cookies cannot be stored securely so they are ignored
+- `WebSocket` will not go through the tunnel automatically
