@@ -20,9 +20,6 @@ function lowerCaseFirstLetter(str) {
   return str ? str.charAt(0).toLowerCase() + str.slice(1) : "";
 }
 
-/**
- * @returns {(() => Promise<{ url: string, certificate_hash: string, alt_certificate_hash?: string }>) & { reset: () => void }}
- */
 function createCertificateFetcher() {
   const certificate = { current: null };
 
@@ -37,6 +34,7 @@ function createCertificateFetcher() {
         )
       );
       if (!cert.ok) throw new Error("Failed to fetch certificate");
+      /** @type {{ url: string, certificate_hash: string, alt_certificate_hash?: string }} */
       const json = await cert.json();
       certificate.current = json;
       return json;
@@ -58,7 +56,7 @@ const certificateFetcher = createCertificateFetcher();
 function encodeHttpRequest(request) {
   const url = new URL(request.url);
   const host = url.host;
-  const pathname = url.pathname || "/";
+  const pathname = url.pathname;
   const headers = new Headers(request.headers);
 
   headers.set("Host", host);
@@ -186,7 +184,7 @@ async function decodeHttpResponse(readable) {
   let headerChunks = "";
   let rest = new Uint8Array();
   while (true) {
-    const { value, done } = await timeoutWrapper(reader.read(), 5000);
+    const { value, done } = await reader.read();
     if (done) break;
     headerChunks += decoder.decode(value, { stream: true });
     const emptyLineIndex = headerChunks.indexOf("\r\n\r\n");
@@ -198,7 +196,13 @@ async function decodeHttpResponse(readable) {
   }
 
   const [statusLine, ...headerLines] = headerChunks.split("\r\n");
-  const [, status, statusText] = statusLine.match(/HTTP\/1.1 (\d+) (.+)/);
+  const statusMatch = statusLine.match(/HTTP\/1.1 (\d+) (.+)/);
+  if (!statusMatch)
+    return new Response("Invalid HTTP Response", {
+      status: 502,
+      statusText: "Bad Gateway",
+    });
+  const [, status, statusText] = statusMatch;
   const headers = new Headers(
     Object.fromEntries(headerLines.map((line) => line.split(": ", 2)))
   );
@@ -270,7 +274,14 @@ async function fetchThroughWebTransport(
     })),
   });
 
-  await timeoutWrapper(wt.ready, 10000, "WebTransport timeout");
+  try {
+    await timeoutWrapper(wt.ready, 10000, "WebTransport timeout");
+  } catch (e) {
+    if (request.headers.get("Accept")?.includes("text/html")) {
+      return fetch("/webtransportify/104.html");
+    }
+    throw e;
+  }
 
   const stream = await wt.createBidirectionalStream();
   const response = await fetchThroughStream(request, stream);

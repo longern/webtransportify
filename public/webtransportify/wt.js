@@ -1,6 +1,9 @@
 (async () => {
   const registerServiceWorker = async () => {
-    if (!("WebTransport" in window)) window.location.href = "/403.html";
+    if (!("WebTransport" in window)) {
+      window.location.href = "/webtransportify/403.html";
+      return;
+    }
 
     const oldRegistration = await navigator.serviceWorker.getRegistration();
     if (oldRegistration) return;

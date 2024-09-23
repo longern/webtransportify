@@ -50,7 +50,7 @@
         <p>WebTransport is not supported.</p>
         <div id="ua"></div>
       </div>
-      <div class="403-error" hidden>
+      <div class="error-403" hidden>
         <p>403 Forbidden</p>
       </div>
     </main>
@@ -70,7 +70,7 @@
             window.navigator.userAgent;
         }
       } else {
-        document.querySelector(".403-error").hidden = false;
+        document.querySelector(".error-403").hidden = false;
       }
     </script>
   </body>
