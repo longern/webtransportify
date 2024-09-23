@@ -38,6 +38,7 @@ cargo run -r -- 127.0.0.1:34433 --client --port 34480 --sch <hash_printed>
 
 In the demo we use a service worker to proxy requests. That means:
 
+- Any service worker provided by the original server will not work
 - Basic authentication will not show the login dialog
 - `HttpOnly` cookies cannot be stored securely so they are ignored
 - `WebSocket` will not go through the tunnel automatically
