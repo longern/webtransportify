@@ -274,14 +274,7 @@ async function fetchThroughWebTransport(
     })),
   });
 
-  try {
-    await timeoutWrapper(wt.ready, 10000, "WebTransport timeout");
-  } catch (e) {
-    if (request.headers.get("Accept")?.includes("text/html")) {
-      return fetch("/webtransportify/104.html");
-    }
-    throw e;
-  }
+  await timeoutWrapper(wt.ready, 10000, "WebTransport timeout");
 
   const stream = await wt.createBidirectionalStream();
   const response = await fetchThroughStream(request, stream);
@@ -296,40 +289,38 @@ async function fetchThroughWebTransport(
 /**
  * @param {Request} request
  * @param {{ waitUntil: (promise: Promise<void>) => void }} ctx
- * @returns {Promise<Response>}
  */
 async function fetchResponse(request, ctx) {
-  const certObj = await certificateFetcher().catch(() => null);
-  if (!certObj) {
-    return new Response("Domain not found", {
-      status: 404,
-      statusText: "Not Found",
-    });
-  }
+  const certObj = await certificateFetcher();
 
-  const {
-    url: webTransportUrl,
-    certificate_hash,
-    alt_certificate_hash,
-  } = certObj;
+  const { url, certificate_hash, alt_certificate_hash } = certObj;
   const serverCertificateHashes = alt_certificate_hash
     ? [certificate_hash, alt_certificate_hash]
     : [certificate_hash];
 
   return timeoutWrapper(
-    fetchThroughWebTransport(request, {
-      url: webTransportUrl,
-      serverCertificateHashes,
-      ctx,
-    }),
+    fetchThroughWebTransport(request, { url, serverCertificateHashes, ctx }),
     15000,
     "Request timeout"
-  ).catch((e) => {
-    return new Response(e.message, {
-      status: 502,
-      statusText: "Bad Gateway",
-    });
-  });
+  );
+}
+
+function renderErrorTemplate(message) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: sans-serif; }
+    h1 { font-size: 1.6em; }
+  </style>
+</head>
+<body>
+  <h1>Gateway Error</h1>
+  <div>${message}</div>
+</body>
+</html>`;
 }
 
 self.addEventListener("fetch", (event) => {
@@ -345,6 +336,12 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetchResponse(event.request, {
       waitUntil: (promise) => event.waitUntil(promise),
-    })
+    }).catch(
+      (e) =>
+        new Response(renderErrorTemplate(e.message), {
+          status: 502,
+          headers: { "Content-Type": "text/html" },
+        })
+    )
   );
 });
