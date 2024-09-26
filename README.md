@@ -36,7 +36,9 @@ cargo run -r -- 127.0.0.1:34433 --client --port 34480 --sch <hash_printed>
 
 ### Limitations
 
-In the demo we use a service worker to proxy requests. That means:
+Safari and WebView on iOS do not support WebTransport yet. See [Browser compatibility](https://developer.mozilla.org/en-US/docs/Web/API/WebTransport#browser_compatibility).
+
+In the demo we use a service worker to proxy requests, which means:
 
 - Any service worker provided by the original server will not work
 - Basic authentication will not show the login dialog

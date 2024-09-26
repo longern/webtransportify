@@ -2,9 +2,37 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        font-family: Arial, sans-serif;
+      }
+      main {
+        max-width: 800px;
+        margin: 0 auto;
+      }
+      div[hidden] {
+        display: none;
+      }
+    </style>
   </head>
   <body>
-    <button id="unregister">Unregister</button>
+    <main>
+      <div class="not-installed">
+        <button id="new-tunnel">New Tunnel</button>
+      </div>
+      <div class="tunnel-created" hidden>
+        <p>Tunnel created!</p>
+        <p id="webhook-url">&nbsp;</p>
+        <button id="copy-webhook-url">Copy</button>
+      </div>
+      <div>
+        <button id="unregister">Unregister</button>
+      </div>
+    </main>
     <script>
       (() => {
         const unregister = document.getElementById("unregister");
@@ -12,9 +40,53 @@
           const registration = await navigator.serviceWorker.getRegistration();
           if (registration) {
             await registration.unregister();
-            location.reload();
+            window.location.reload();
           }
         });
+
+        const newTunnel = document.getElementById("new-tunnel");
+        newTunnel.addEventListener("click", async () => {
+          const response = await fetch("/webtransportify/tunnels", {
+            method: "POST",
+          });
+          if (response.status !== 201) return;
+          const { id, token } = await response.json();
+          fetch("/webtransportify/hostname", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tunnel_id: id }),
+          });
+          const webhookUrl = new URL(
+            `/webtransportify/tunnels/${id}/${token}`,
+            window.location.origin
+          );
+          document.getElementById("webhook-url").textContent = webhookUrl;
+          document.querySelector(".tunnel-created").hidden = false;
+        });
+
+        const copyWebhookUrl = document.getElementById("copy-webhook-url");
+        copyWebhookUrl.addEventListener("click", () => {
+          const webhookUrl = document.getElementById("webhook-url");
+          navigator.clipboard.writeText(webhookUrl.textContent);
+        });
+
+        async function fetchCertificate() {
+          const response = await fetch("/webtransportify/hostname");
+          if (response.status === 500) {
+            return;
+          } else if (response.status === 404) {
+            const tunnelsResponse = await fetch("/webtransportify/tunnels");
+            const tunnels = await tunnelsResponse.json();
+            if (tunnels.length === 0) {
+              return;
+            }
+          } else {
+            const certificate = await response.json();
+            console.log(certificate);
+          }
+        }
+
+        fetchCertificate();
       })();
     </script>
   </body>

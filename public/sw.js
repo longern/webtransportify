@@ -28,13 +28,10 @@ function createCertificateFetcher() {
       if (certificate.current) return certificate.current;
 
       const cert = await fetch(
-        new URL(
-          `/webtransportify/certificates/${encodeURIComponent("@")}`,
-          self.location.origin
-        )
+        new URL("/webtransportify/hostname", self.location.origin)
       );
       if (!cert.ok) throw new Error("Failed to fetch certificate");
-      /** @type {{ url: string, certificate_hash: string, alt_certificate_hash?: string }} */
+      /** @type {{ endpoint: string, certificate_hash: string, alt_certificate_hash?: string }} */
       const json = await cert.json();
       certificate.current = json;
       return json;
@@ -293,7 +290,7 @@ async function fetchThroughWebTransport(
 async function fetchResponse(request, ctx) {
   const certObj = await certificateFetcher();
 
-  const { url, certificate_hash, alt_certificate_hash } = certObj;
+  const { endpoint: url, certificate_hash, alt_certificate_hash } = certObj;
   const serverCertificateHashes = alt_certificate_hash
     ? [certificate_hash, alt_certificate_hash]
     : [certificate_hash];
@@ -329,7 +326,8 @@ self.addEventListener("fetch", (event) => {
   if (
     url.origin !== self.location.origin ||
     url.href === self.location.href ||
-    url.pathname.startsWith("/webtransportify/")
+    url.pathname.startsWith("/webtransportify/") ||
+    url.pathname.startsWith("/cdn-cgi/")
   )
     return;
 
