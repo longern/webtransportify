@@ -93,22 +93,6 @@ function encodeHttpRequest(request) {
   return body.pipeThrough(transformer);
 }
 
-/**
- * @template T
- * @param {Promise<T>} promise
- * @param {number} timeout
- * @param {string} message
- * @returns {Promise<T>}
- */
-function timeoutWrapper(promise, timeout, message = "Timeout") {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(message));
-    }, timeout);
-    promise.then(resolve, reject).finally(() => clearTimeout(timer));
-  });
-}
-
 function decodeChunkedTransformer() {
   const decoder = new TextDecoder();
   let buffer = new Uint8Array();
@@ -256,22 +240,13 @@ function fetchThroughStream(request, stream) {
   return decodeHttpResponse(stream.readable);
 }
 
-/**
- * @param {Request} request
- * @param {{
- *   url: string,
- *   serverCertificateHashes: string[],
- *   ctx: { waitUntil: (promise: Promise<void>) => void },
- * }} options
- * @returns {Promise<Response>}
- */
-async function fetchThroughWebTransport(
-  request,
-  { url, serverCertificateHashes, ctx }
-) {
-  const cache = await caches.open("webtransportify");
-  const cachedResponse = await cache.match(request);
-  if (cachedResponse) return cachedResponse;
+async function createWebTransport() {
+  const certObj = await certificateFetcher();
+
+  const { endpoint: url, certificate_hash, alt_certificate_hash } = certObj;
+  const serverCertificateHashes = alt_certificate_hash
+    ? [certificate_hash, alt_certificate_hash]
+    : [certificate_hash];
 
   const wt = new WebTransport(url, {
     serverCertificateHashes: serverCertificateHashes.map((hash) => ({
@@ -280,7 +255,31 @@ async function fetchThroughWebTransport(
     })),
   });
 
-  await timeoutWrapper(wt.ready, 10000, "WebTransport timeout");
+  await wt.ready;
+  return wt;
+}
+
+/**
+ * @param {Request} request
+ * @param {{
+ *   ctx: { waitUntil: (promise: Promise<void>) => void },
+ * }} options
+ * @returns {Promise<Response>}
+ */
+async function fetchResponse(request, { ctx }) {
+  const cache = await caches.open("webtransportify");
+  const cachedResponse = await cache.match(request);
+  if (cachedResponse) return cachedResponse;
+
+  const wt = await createWebTransport().catch((e) => {
+    if (e.message?.includes("handshake")) {
+      certificateFetcher.reset();
+      return fetch(new URL("/webtransportify/hostname", self.location.origin), {
+        cache: "reload",
+      }).then(() => createWebTransport());
+    }
+    throw e;
+  });
 
   const stream = await wt.createBidirectionalStream();
   const response = await fetchThroughStream(request, stream);
@@ -290,25 +289,6 @@ async function fetchThroughWebTransport(
   )
     ctx.waitUntil(cache.put(request, response.clone()));
   return response;
-}
-
-/**
- * @param {Request} request
- * @param {{ waitUntil: (promise: Promise<void>) => void }} ctx
- */
-async function fetchResponse(request, ctx) {
-  const certObj = await certificateFetcher();
-
-  const { endpoint: url, certificate_hash, alt_certificate_hash } = certObj;
-  const serverCertificateHashes = alt_certificate_hash
-    ? [certificate_hash, alt_certificate_hash]
-    : [certificate_hash];
-
-  return timeoutWrapper(
-    fetchThroughWebTransport(request, { url, serverCertificateHashes, ctx }),
-    15000,
-    "Request timeout"
-  );
 }
 
 function renderErrorTemplate(message) {
@@ -329,6 +309,14 @@ function renderErrorTemplate(message) {
 </html>`;
 }
 
+async function gatewayTimeout(timeout) {
+  await new Promise((resolve) => setTimeout(resolve, timeout));
+  return new Response(renderErrorTemplate("Gateway Timeout"), {
+    status: 504,
+    headers: { "Content-Type": "text/html" },
+  });
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
@@ -341,9 +329,12 @@ self.addEventListener("fetch", (event) => {
     return;
 
   event.respondWith(
-    fetchResponse(event.request, {
-      waitUntil: (promise) => event.waitUntil(promise),
-    }).catch(
+    Promise.race([
+      fetchResponse(event.request, {
+        waitUntil: (promise) => event.waitUntil(promise),
+      }),
+      gatewayTimeout(15000),
+    ]).catch(
       (e) =>
         new Response(renderErrorTemplate(e.message), {
           status: 502,
