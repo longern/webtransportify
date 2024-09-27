@@ -2,6 +2,14 @@ const DANGEROUSLY_STORE_HTTPONLY_COOKIES = false;
 
 let basicAuthTokens = {};
 
+function log(...args) {
+  const channel = new BroadcastChannel("webtransportify-log");
+  channel.postMessage({
+    level: "info",
+    message: args.map((arg) => arg.toString()).join(" "),
+  });
+}
+
 self.addEventListener("install", () => {
   self.skipWaiting();
 });
@@ -33,6 +41,7 @@ function createCertificateFetcher() {
       if (!cert.ok) throw new Error("Failed to fetch certificate");
       /** @type {{ endpoint: string, certificate_hash: string, alt_certificate_hash?: string }} */
       const json = await cert.json();
+      log("Hashes:", json.certificate_hash, json.alt_certificate_hash);
       certificate.current = json;
       return json;
     },

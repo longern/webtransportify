@@ -5,7 +5,7 @@ export const onRequestGet = async (context: any) => {
     const certificate = await db
       .prepare(
         `
-SELECT endpoint, certificate_hash, alt_certificate_hash
+SELECT endpoint, certificate_hash, alt_certificate_hash, last_modified
 FROM wt_hostnames JOIN wt_tunnels
 ON wt_hostnames.tunnel_id = wt_tunnels.id
 WHERE hostname = ?
@@ -15,9 +15,11 @@ WHERE hostname = ?
       .first();
 
     if (!certificate) return new Response("Not Found", { status: 404 });
+    const lastModified = new Date(certificate.last_modified).toUTCString();
+    delete certificate.last_modified;
 
     return Response.json(certificate, {
-      headers: { "Content-Type": "application/json" },
+      headers: { "Last-Modified": lastModified },
     });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });

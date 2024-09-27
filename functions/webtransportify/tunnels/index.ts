@@ -13,7 +13,7 @@ export const onRequestPost = async (context: {
     certificate_hash TEXT,\
     alt_certificate_hash TEXT,\
     token TEXT,\
-    updated_at INTEGER\
+    last_modified INTEGER\
   );
   CREATE TABLE IF NOT EXISTS wt_hostnames (\
     hostname TEXT PRIMARY KEY,\
@@ -32,7 +32,7 @@ export const onRequestPost = async (context: {
   try {
     await db
       .prepare(
-        `INSERT INTO wt_tunnels (id, endpoint, certificate_hash, alt_certificate_hash, token, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO wt_tunnels (id, endpoint, certificate_hash, alt_certificate_hash, token, last_modified) VALUES (?, ?, ?, ?, ?, ?)`
       )
       .bind(id, endpoint, certificateHash, null, token, now)
       .run();

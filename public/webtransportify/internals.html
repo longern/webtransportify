@@ -2,26 +2,57 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WebTransportify Internals</title>
     <style>
       html,
       body {
         height: 100%;
       }
       body {
+        margin: 0;
         font-family: Arial, sans-serif;
       }
       main {
         max-width: 800px;
         margin: 0 auto;
+        padding: 16px;
+      }
+      main > *:first-child {
+        margin-top: 0.5rem;
+      }
+      h2 {
+        margin-bottom: 0.5rem;
       }
       div[hidden] {
         display: none;
+      }
+      p {
+        margin-top: 0.5rem;
+        margin-bottom: 0.5rem;
+        overflow-wrap: break-word;
+      }
+      button {
+        padding: 0.7rem 1rem;
+        font-size: 1rem;
+        border: none;
+        border-radius: 4px;
+        background-color: #2196f3;
+        color: white;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      button:hover {
+        background-color: #1769aa;
+      }
+      textarea {
+        font-family: monospace;
       }
     </style>
   </head>
   <body>
     <main>
-      <div class="not-installed">
+      <h2>Tunnel</h2>
+      <div class="not-installed" hidden>
         <button id="new-tunnel">New Tunnel</button>
       </div>
       <div class="tunnel-created" hidden>
@@ -29,9 +60,22 @@
         <p id="webhook-url">&nbsp;</p>
         <button id="copy-webhook-url">Copy</button>
       </div>
-      <div>
-        <button id="unregister">Unregister</button>
+      <div class="tunnel-active" hidden>
+        <p>Tunnel is active!</p>
+        <p id="endpoint">&nbsp;</p>
+        <p id="certificate-hash">&nbsp;</p>
+        <p id="alt-certificate-hash">&nbsp;</p>
+        <p id="last-modified">&nbsp;</p>
+        <p>
+          <button id="reload">Reload</button>
+        </p>
       </div>
+      <h2>Service worker</h2>
+      <p>
+        <button id="unregister">Unregister</button>
+      </p>
+      <p style="margin-bottom: 4px">Log:</p>
+      <textarea id="log" rows="10" readonly style="width: 100%"></textarea>
     </main>
     <script>
       (() => {
@@ -61,6 +105,7 @@
             window.location.origin
           );
           document.getElementById("webhook-url").textContent = webhookUrl;
+          document.querySelector(".not-installed").hidden = true;
           document.querySelector(".tunnel-created").hidden = false;
         });
 
@@ -70,10 +115,17 @@
           navigator.clipboard.writeText(webhookUrl.textContent);
         });
 
-        async function fetchCertificate() {
-          const response = await fetch("/webtransportify/hostname");
+        const reload = document.getElementById("reload");
+        reload.addEventListener("click", () => {
+          fetchCertificate(reload);
+        });
+
+        async function fetchCertificate(reload = false) {
+          const response = await fetch("/webtransportify/hostname", {
+            cache: reload ? "reload" : "default",
+          });
           if (response.status === 500) {
-            return;
+            document.querySelector(".not-installed").hidden = false;
           } else if (response.status === 404) {
             const tunnelsResponse = await fetch("/webtransportify/tunnels");
             const tunnels = await tunnelsResponse.json();
@@ -81,10 +133,27 @@
               return;
             }
           } else {
+            document.querySelector(".tunnel-active").hidden = false;
             const certificate = await response.json();
-            console.log(certificate);
+            document.getElementById("endpoint").textContent =
+              certificate.endpoint;
+            document.getElementById("certificate-hash").textContent =
+              certificate.certificate_hash;
+            document.getElementById("alt-certificate-hash").textContent =
+              certificate.alt_certificate_hash || " ";
+            document.getElementById("last-modified").textContent = new Date(
+              response.headers.get("last-modified")
+            ).toLocaleString();
           }
         }
+
+        const channel = new BroadcastChannel("webtransportify-log");
+        channel.onmessage = (event) => {
+          const { level, message } = event.data;
+          const log = document.getElementById("log");
+          log.value += `[${level.toUpperCase()}] ${message}\n`;
+          log.scrollTop = log.scrollHeight;
+        };
 
         fetchCertificate();
       })();

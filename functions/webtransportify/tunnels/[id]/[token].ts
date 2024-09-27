@@ -21,7 +21,7 @@ export const onRequestPost = async (context: any) => {
   try {
     await db
       .prepare(
-        "UPDATE wt_tunnels SET certificate_hash = ?, alt_certificate_hash = certificate_hash, updated_at = ? WHERE id = ?"
+        "UPDATE wt_tunnels SET certificate_hash = ?, alt_certificate_hash = certificate_hash, last_modified = ? WHERE id = ?"
       )
       .bind(certificateHash, now, id)
       .all();
