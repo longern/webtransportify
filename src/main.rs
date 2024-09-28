@@ -15,6 +15,30 @@ mod cert;
 mod cli;
 mod client;
 
+fn verify_origin(origin: &str) -> bool {
+    let env_allow_origins = std::env::var("ALLOW_ORIGINS");
+    if env_allow_origins.is_err() {
+        return true;
+    }
+
+    let unwrapped_allow_origins = env_allow_origins.unwrap();
+    if unwrapped_allow_origins == "*" {
+        return true;
+    }
+
+    let allow_origins: Vec<&str> = unwrapped_allow_origins.split(',').collect();
+    for allow_origin in allow_origins {
+        if let Some(rest) = allow_origin.strip_prefix("https://*.") {
+            if origin.starts_with("https://") && origin.ends_with(rest) {
+                return true;
+            }
+        } else if origin == allow_origin {
+            return true;
+        }
+    }
+    false
+}
+
 async fn handle_session(
     session: IncomingSession,
     target_addr: &str,
@@ -26,6 +50,16 @@ async fn handle_session(
             return Ok(());
         }
     };
+
+    let verified = match incoming_request.origin() {
+        Some(origin) => verify_origin(origin),
+        None => false,
+    };
+    if !verified {
+        incoming_request.forbidden().await;
+        return Ok(());
+    }
+
     let connection = incoming_request.accept().await?;
     let mut tcp = TcpStream::connect(target_addr).await?;
     let bidi = connection.accept_bi().await?;

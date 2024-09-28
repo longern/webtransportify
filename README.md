@@ -3,6 +3,7 @@
 Translates WebTransport traffic to TCP socket traffic.
 
 If you have a server with public IP address, but
+
 - you don't have a domain name
 - or your domain name resolution is banned
 - or you don't have a TLS certificate
@@ -33,6 +34,10 @@ Test the client by running the following command:
 ```
 cargo run -r -- 127.0.0.1:34433 --client --port 34480 --sch <hash_printed>
 ```
+
+### Security
+
+Set environment variable `ALLOW_ORIGINS` as `https://example.com,https://*.your-domain.com`.
 
 ### Limitations
 
