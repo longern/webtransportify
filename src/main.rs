@@ -16,17 +16,14 @@ mod cli;
 mod client;
 
 fn verify_origin(origin: &str) -> bool {
-    let env_allow_origins = std::env::var("ALLOW_ORIGINS");
-    if env_allow_origins.is_err() {
+    let Ok(env_allow_origins) = std::env::var("ALLOW_ORIGINS") else {
+        return true;
+    };
+    if env_allow_origins == "*" {
         return true;
     }
 
-    let unwrapped_allow_origins = env_allow_origins.unwrap();
-    if unwrapped_allow_origins == "*" {
-        return true;
-    }
-
-    let allow_origins: Vec<&str> = unwrapped_allow_origins.split(',').collect();
+    let allow_origins: Vec<&str> = env_allow_origins.split(',').collect();
     for allow_origin in allow_origins {
         if let Some(rest) = allow_origin.strip_prefix("https://*.") {
             if origin.starts_with("https://") && origin.ends_with(rest) {
@@ -116,7 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cert_key_provided = cert_key.is_some();
     let cert_manager = cert::CertificateManager::new(cert_key, args.cert_webhook);
 
-    let identity = cert_manager.load_identity().await;
+    let identity = cert_manager.load_identity().await?;
 
     let config = ServerConfig::builder()
         .with_bind_default(args.port)

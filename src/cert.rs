@@ -12,7 +12,9 @@ pub struct CertificateManager {
 
 fn identity_to_x509(identity: &Identity) -> Result<X509Certificate, Box<dyn std::error::Error>> {
     let cert_chain = identity.certificate_chain();
-    let cert = cert_chain.as_slice().get(0).unwrap();
+    let Some(cert) = cert_chain.as_slice().get(0) else {
+        return Err("No certificate found".into());
+    };
     let (_, x509) = X509Certificate::from_der(cert.der())?;
     Ok(x509)
 }
@@ -40,7 +42,9 @@ async fn save_self_signed_cert() -> Result<Identity, Box<dyn std::error::Error>>
 }
 
 fn fetch_webhook(cert_webhook: &Option<String>, cert_hash: String) {
-    let webhook = cert_webhook.as_ref().unwrap();
+    let Some(webhook) = cert_webhook.as_ref() else {
+        return;
+    };
     let client = reqwest::Client::new();
     let future = client.post(webhook).body(cert_hash).send();
     tokio::task::spawn(async {
@@ -59,7 +63,7 @@ impl CertificateManager {
         }
     }
 
-    pub async fn load_identity(&self) -> Identity {
+    pub async fn load_identity(&self) -> Result<Identity, Box<dyn std::error::Error>> {
         let identity_result = match self.cert_key {
             Some((ref cert, ref key)) => Identity::load_pemfiles(cert, key).await,
             None => Identity::load_pemfiles("cert.pem", "key.pem").await,
@@ -74,19 +78,20 @@ impl CertificateManager {
         let identity = if let Some(valid_identity) = identity_from_file {
             valid_identity
         } else {
-            save_self_signed_cert().await.unwrap()
+            save_self_signed_cert().await?
         };
 
-        let cert_key = identity.certificate_chain().as_slice().get(0).unwrap();
+        let Some(cert_key) = identity.certificate_chain().as_slice().get(0) else {
+            return Err("No certificate found".into());
+        };
         let cert_hash = BASE64_STANDARD.encode(cert_key.hash().as_ref());
         log::info!("Cert hash: {}", cert_hash);
 
-        let cert_webhook = &self.cert_webhook;
-        if !is_identity_valid && cert_webhook.is_some() {
-            fetch_webhook(cert_webhook, cert_hash);
+        if !is_identity_valid {
+            fetch_webhook(&self.cert_webhook, cert_hash);
         }
 
-        identity
+        Ok(identity)
     }
 
     pub fn daemon(

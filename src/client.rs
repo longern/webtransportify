@@ -59,7 +59,12 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let decoded_hashes = args
         .sch
         .iter()
-        .map(|x| Sha256Digest::new(BASE64_STANDARD.decode(x).unwrap().try_into().unwrap()));
+        .map(|x| {
+            BASE64_STANDARD
+                .decode(x)
+                .map(|x| Sha256Digest::new(x.try_into().unwrap()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let config = ClientConfig::builder()
         .with_bind_default()
         .with_server_certificate_hashes(decoded_hashes)
