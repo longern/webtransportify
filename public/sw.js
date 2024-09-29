@@ -330,9 +330,7 @@ self.addEventListener("fetch", (event) => {
 
   event.respondWith(
     Promise.race([
-      fetchResponse(event.request, {
-        waitUntil: (promise) => event.waitUntil(promise),
-      }),
+      fetchResponse(event.request, { ctx: event }),
       gatewayTimeout(15000),
     ]).catch(
       (e) =>
