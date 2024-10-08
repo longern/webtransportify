@@ -2,13 +2,21 @@ const DANGEROUSLY_STORE_HTTPONLY_COOKIES = false;
 
 let basicAuthTokens = {};
 
-function log(...args) {
-  const channel = new BroadcastChannel("webtransportify-log");
-  channel.postMessage({
-    level: "info",
-    message: args.map((arg) => arg.toString()).join(" "),
-  });
+/** @param {string} level */
+function makeLogger(level) {
+  return function (...args) {
+    const channel = new BroadcastChannel("webtransportify-log");
+    channel.postMessage({
+      level,
+      message: args.map((arg) => arg.toString()).join(" "),
+    });
+  };
 }
+
+const log = {
+  info: makeLogger("info"),
+  warn: makeLogger("warn"),
+};
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -41,7 +49,7 @@ function createCertificateFetcher() {
       if (!cert.ok) throw new Error("Failed to fetch certificate");
       /** @type {{ endpoint: string, certificate_hash: string, alt_certificate_hash?: string }} */
       const json = await cert.json();
-      log("Hashes:", json.certificate_hash, json.alt_certificate_hash);
+      log.info("Hashes:", json.certificate_hash, json.alt_certificate_hash);
       certificate.current = json;
       return json;
     },
@@ -282,9 +290,15 @@ async function fetchResponse(request, { ctx }) {
   });
 
   const stream = await wt.createBidirectionalStream();
+  request.signal.addEventListener("abort", () => {
+    stream.writable.abort();
+    stream.readable.cancel();
+    log.warn("Request aborted");
+  });
   const response = await fetchThroughStream(request, stream);
   if (
     response.ok &&
+    response.status !== 206 && // Partial Content is not cacheable
     !response.headers.get("content-type")?.startsWith("text/html")
   )
     ctx.waitUntil(cache.put(request, response.clone()));
