@@ -46,7 +46,10 @@ fn fetch_webhook(cert_webhook: &Option<String>, cert_hash: String) {
         return;
     };
     let client = reqwest::Client::new();
-    let future = client.post(webhook).body(cert_hash).send();
+    let future = client
+        .post(webhook)
+        .body(format!(r#"{{"certificate_hash":"{}"}}"#, cert_hash))
+        .send();
     tokio::task::spawn(async {
         match future.await {
             Ok(res) => log::info!("Webhook response: {:?}", res.status()),

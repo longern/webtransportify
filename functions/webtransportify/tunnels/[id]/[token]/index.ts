@@ -13,20 +13,29 @@ export const onRequestPost = async (context: any) => {
   if (tunnel.token !== token)
     return new Response("Unauthorized", { status: 401 });
 
-  const certificateHash = await request.text();
+  const { endpoint, certificate_hash: certificateHash } = await request.json();
   const now = request.headers.has("Date")
     ? new Date(request.headers.get("Date")).getTime()
     : Date.now();
 
   try {
-    await db
-      .prepare(
-        "UPDATE wt_tunnels SET certificate_hash = ?, alt_certificate_hash = certificate_hash, last_modified = ? WHERE id = ?"
-      )
-      .bind(certificateHash, now, id)
-      .all();
+    if (endpoint) {
+      await db
+        .prepare("UPDATE wt_tunnels SET endpoint = ? WHERE id = ?")
+        .bind(endpoint, id)
+        .all();
+    }
+
+    if (certificateHash) {
+      await db
+        .prepare(
+          "UPDATE wt_tunnels SET certificate_hash = ?, alt_certificate_hash = certificate_hash, last_modified = ? WHERE id = ?"
+        )
+        .bind(certificateHash, now, id)
+        .all();
+    }
   } catch (e) {
-    return new Response("Not Found", { status: 404 });
+    return Response.json({ error: e.message }, { status: 500 });
   }
 
   return new Response(null, { status: 204 });

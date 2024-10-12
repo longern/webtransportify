@@ -25,7 +25,7 @@ export const onRequestPost = async (context: {
   const id = crypto.randomUUID();
   const endpoint = request.headers.get("X-WT-Endpoint");
   const certificateHash = await request.text();
-  const token = crypto.randomUUID();
+  const token = crypto.randomUUID().replace(/-/g, "");
   const dateHeader = request.headers.get("Date");
   const now = dateHeader ? new Date(dateHeader).getTime() : Date.now();
 
