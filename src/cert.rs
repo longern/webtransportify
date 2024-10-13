@@ -68,11 +68,9 @@ impl CertificateManager {
             Some((ref cert, ref key)) => Identity::load_pemfiles(cert, key).await,
             None => Identity::load_pemfiles("cert.pem", "key.pem").await,
         };
-        let identity_from_file = match identity_result {
-            Ok(identity) => Some(identity),
-            Err(_) => None,
-        }
-        .filter(|identity| is_identity_valid(identity));
+        let identity_from_file = identity_result
+            .ok()
+            .filter(|identity| is_identity_valid(identity));
         let is_identity_valid = identity_from_file.is_some();
 
         let identity = if let Some(valid_identity) = identity_from_file {
