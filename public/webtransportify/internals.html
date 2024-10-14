@@ -16,19 +16,25 @@
         max-width: 800px;
         margin: 0 auto;
         padding: 16px;
+        line-height: 1.5;
       }
       main > *:first-child {
-        margin-top: 0.5rem;
+        margin-top: 0.3em;
       }
       h2 {
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.3em;
+      }
+      h3 {
+        margin-top: 0.5em;
+        margin-bottom: 0.3em;
+        font-weight: normal;
       }
       div[hidden] {
         display: none;
       }
-      p {
-        margin-top: 0.5rem;
-        margin-bottom: 0.5rem;
+      p,
+      ol {
+        margin: 0;
         overflow-wrap: break-word;
       }
       button {
@@ -62,9 +68,14 @@
       </div>
       <div class="tunnel-active" hidden>
         <p>Tunnel is active!</p>
+        <h3>Endpoint:</h3>
         <p id="endpoint">&nbsp;</p>
-        <p id="certificate-hash">&nbsp;</p>
-        <p id="alt-certificate-hash">&nbsp;</p>
+        <h3>SHA-256 certificate hashes:</h3>
+        <ol>
+          <li id="certificate-hash">&nbsp;</li>
+          <li id="alt-certificate-hash">&nbsp;</li>
+        </ol>
+        <h3>Last modified:</h3>
         <p id="last-modified">&nbsp;</p>
         <p>
           <button id="reload">Reload</button>
