@@ -1,6 +1,5 @@
-use base64::prelude::BASE64_STANDARD;
-use base64::Engine;
 use clap::Parser;
+use hex::FromHexError;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use wtransport::stream::BiStream;
@@ -33,6 +32,15 @@ async fn handle_stream(
     Ok(())
 }
 
+fn parse_cert_hash(cert_hash: &str) -> Result<Sha256Digest, FromHexError> {
+    let decoded_hash = hex::decode(cert_hash)?;
+    let hash_u8 = decoded_hash
+        .try_into()
+        .map_err(|_| FromHexError::InvalidStringLength)?;
+    let digest = Sha256Digest::new(hash_u8);
+    Ok(digest)
+}
+
 async fn session_loop(listener: TcpListener, target_addr: String, config: ClientConfig) {
     loop {
         let (mut stream, socket_addr) = listener.accept().await.unwrap();
@@ -59,11 +67,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let decoded_hashes = args
         .sch
         .iter()
-        .map(|x| {
-            BASE64_STANDARD
-                .decode(x)
-                .map(|x| Sha256Digest::new(x.try_into().unwrap()))
-        })
+        .map(|hash| parse_cert_hash(hash))
         .collect::<Result<Vec<_>, _>>()?;
     let config = ClientConfig::builder()
         .with_bind_default()

@@ -1,5 +1,4 @@
-use base64::prelude::Engine;
-use base64::prelude::BASE64_STANDARD;
+use hex;
 use std::time::Duration;
 use wtransport::Identity;
 use x509_parser::prelude::FromDer;
@@ -85,7 +84,7 @@ impl CertificateManager {
         let Some(cert_key) = identity.certificate_chain().as_slice().get(0) else {
             return Err("No certificate found".into());
         };
-        let cert_hash = BASE64_STANDARD.encode(cert_key.hash().as_ref());
+        let cert_hash = hex::encode(cert_key.hash().as_ref());
         log::info!("Cert hash: {}", cert_hash);
 
         if !is_identity_valid {
@@ -119,7 +118,7 @@ impl CertificateManager {
                 log::info!("Renewing certificate");
                 let new_identity = save_self_signed_cert().await.unwrap();
                 let cert = new_identity.certificate_chain().as_slice().get(0).unwrap();
-                let cert_hash = BASE64_STANDARD.encode(cert.hash().as_ref());
+                let cert_hash = hex::encode(cert.hash().as_ref());
                 log::info!("Cert hash: {}", cert_hash);
 
                 callback(&new_identity);

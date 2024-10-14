@@ -6,11 +6,15 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(clients.claim());
 });
 
-/**
- * @param {string} base64
- */
-function base64ToArrayBuffer(base64) {
-  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+/** @param {string} hex */
+function hexToArrayBuffer(hex) {
+  const length = hex.length;
+  const buffer = new ArrayBuffer(length / 2);
+  const view = new Uint8Array(buffer);
+  for (let i = 0; i < length; i += 2) {
+    view[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  }
+  return buffer;
 }
 
 /**
@@ -156,9 +160,9 @@ async function fetchThroughWebTransport(
   if (cachedResponse) return cachedResponse;
 
   const wt = new WebTransport(url, {
-    serverCertificateHashes: serverCertificateHashes.map((hash) => ({
+    serverCertificateHashes: serverCertificateHashes.map((hashHex) => ({
       algorithm: "sha-256",
-      value: base64ToArrayBuffer(hash),
+      value: hexToArrayBuffer(hashHex),
     })),
   });
 
