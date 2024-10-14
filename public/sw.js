@@ -52,6 +52,7 @@ function createCertificateFetcher() {
       const cert = await fetch(
         new URL("/webtransportify/hostname", self.location.origin)
       );
+      if (cert.status === 404) throw new Error("Certificate not found");
       if (!cert.ok) throw new Error("Failed to fetch certificate");
       /** @type {{ endpoint: string, certificate_hash: string, alt_certificate_hash?: string }} */
       const json = await cert.json();
