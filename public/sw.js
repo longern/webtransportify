@@ -43,26 +43,31 @@ function lowerCaseFirstLetter(str) {
 }
 
 function createCertificateFetcher() {
-  const certificate = { current: null };
+  const url = new URL("/webtransportify/hostname", self.location.origin);
+  const request = new Request(url);
 
   return Object.assign(
     async () => {
-      if (certificate.current) return certificate.current;
-
-      const cert = await fetch(
-        new URL("/webtransportify/hostname", self.location.origin)
-      );
-      if (cert.status === 404) throw new Error("Certificate not found");
-      if (!cert.ok) throw new Error("Failed to fetch certificate");
+      const cache = await caches.open("webtransportify");
+      let response = await cache.match(request);
+      let isFromCache = true;
+      if (!response) {
+        isFromCache = false;
+        response = await fetch(request);
+        if (response.status === 404) throw new Error("Certificate not found");
+        if (!response.ok) throw new Error("Failed to fetch certificate");
+        await cache.put(request, response.clone());
+      }
       /** @type {{ endpoint: string, certificate_hash: string, alt_certificate_hash?: string }} */
-      const json = await cert.json();
-      log.info("Hashes:", json.certificate_hash, json.alt_certificate_hash);
-      certificate.current = json;
-      return json;
+      const cert = await response.json();
+      if (!isFromCache)
+        log.info("Hashes:", cert.certificate_hash, cert.alt_certificate_hash);
+      return cert;
     },
     {
-      reset() {
-        certificate.current = null;
+      async reset() {
+        const cache = await caches.open("webtransportify");
+        return cache.delete(request);
       },
     }
   );
@@ -286,12 +291,10 @@ async function fetchResponse(request, { ctx }) {
   const cachedResponse = await cache.match(request);
   if (cachedResponse) return cachedResponse;
 
-  const wt = await createWebTransport().catch((e) => {
+  const wt = await createWebTransport().catch(async (e) => {
     if (e.message?.includes("handshake")) {
-      certificateFetcher.reset();
-      return fetch(new URL("/webtransportify/hostname", self.location.origin), {
-        cache: "reload",
-      }).then(() => createWebTransport());
+      await certificateFetcher.reset();
+      return await createWebTransport();
     }
     throw e;
   });
