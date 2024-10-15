@@ -17,9 +17,10 @@
         margin: 0 auto;
         padding: 16px;
         line-height: 1.5;
+        overflow-wrap: break-word;
       }
       main > *:first-child {
-        margin-top: 0.3em;
+        margin-top: 0;
       }
       h2 {
         margin-bottom: 0.3em;
@@ -32,10 +33,12 @@
       div[hidden] {
         display: none;
       }
-      p,
+      p {
+        margin-top: 0;
+        margin-bottom: 0.3em;
+      }
       ol {
         margin: 0;
-        overflow-wrap: break-word;
       }
       select {
         padding: 8px;
@@ -87,8 +90,8 @@
         <p id="endpoint">&nbsp;</p>
         <h3>SHA-256 certificate hashes:</h3>
         <ol>
-          <li id="certificate-hash">&nbsp;</li>
-          <li id="alt-certificate-hash">&nbsp;</li>
+          <li><code id="certificate-hash">&nbsp;</code></li>
+          <li><code id="alt-certificate-hash">&nbsp;</code></li>
         </ol>
         <h3>Last modified:</h3>
         <p id="last-modified">&nbsp;</p>
@@ -100,7 +103,7 @@
       <p>
         <button id="unregister">Unregister</button>
       </p>
-      <p style="margin-bottom: 4px">Log:</p>
+      <p>Log:</p>
       <textarea id="log" rows="10" readonly style="width: 100%"></textarea>
     </main>
     <script>
@@ -169,8 +172,10 @@
           } else {
             document.querySelector(".tunnel-active").hidden = false;
             const certificate = await response.json();
-            document.getElementById("endpoint").textContent =
-              certificate.endpoint;
+            const endpointLink = document.createElement("a");
+            endpointLink.href = certificate.endpoint;
+            endpointLink.textContent = certificate.endpoint;
+            document.getElementById("endpoint").replaceWith(endpointLink);
             document.getElementById("certificate-hash").textContent =
               certificate.certificate_hash;
             document.getElementById("alt-certificate-hash").textContent =
