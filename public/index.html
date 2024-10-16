@@ -2,6 +2,31 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <script src="./webtransportify/wt.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      (async () => {
+        if (!("WebTransport" in window)) {
+          window.location.href = "/webtransportify/403.html";
+          return;
+        }
+
+        const oldRegistration = await navigator.serviceWorker.getRegistration();
+        if (oldRegistration) return;
+
+        const rootUrlWoUser = new URL("/", window.location.href);
+        await navigator.serviceWorker.register("/sw.js", {
+          scope: rootUrlWoUser.toString(),
+        });
+        window.location.reload();
+      })();
+    </script>
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+    </style>
   </head>
+  <body>
+    Redirecting...
+  </body>
 </html>

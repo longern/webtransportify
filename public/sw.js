@@ -287,7 +287,7 @@ async function createWebTransport() {
  * @returns {Promise<Response>}
  */
 async function fetchResponse(request, { ctx }) {
-  const cache = await caches.open("webtransportify");
+  const cache = await caches.open(self.location.host);
   const cachedResponse = await cache.match(request);
   if (cachedResponse) return cachedResponse;
 
@@ -306,12 +306,26 @@ async function fetchResponse(request, { ctx }) {
     log.warn("Request aborted");
   });
   const response = await fetchThroughStream(request, stream);
+
   if (
+    request.method === "GET" &&
     response.ok &&
     response.status !== 206 && // Partial Content is not cacheable
-    !response.headers.get("content-type")?.startsWith("text/html")
+    !response.headers.get("content-type")?.startsWith("text/html") &&
+    response.headers.get("content-length") < 64 * 1024 * 1024 && // 64 MB
+    !response.headers.get("set-cookie") &&
+    ![
+      "no-store",
+      "no-cache",
+      "private",
+      "no-transform",
+      "must-revalidate",
+    ].some((directive) =>
+      response.headers.get("cache-control")?.includes(directive)
+    )
   )
     ctx.waitUntil(cache.put(request, response.clone()));
+
   return response;
 }
 
