@@ -1,6 +1,10 @@
 export const onRequestGet = async (context: any) => {
   const { request, env } = context;
   const db = env.DB;
+
+  const origin = request.headers.get("Origin");
+  const host = origin ? new URL(origin).hostname : request.headers.get("Host");
+
   try {
     const certificate = await db
       .prepare(
@@ -11,30 +15,39 @@ ON wt_hostnames.tunnel_id = wt_tunnels.id
 WHERE hostname = ?
 `
       )
-      .bind(request.headers.get("Host"))
+      .bind(host)
       .first();
 
     if (!certificate) {
       const { results: tunnels } = await db
         .prepare("SELECT id, endpoint FROM wt_tunnels")
         .all();
-      return Response.json({ error: "Not Found", tunnels }, { status: 404 });
+      return Response.json(
+        { error: "Not Found", tunnels },
+        { status: 404, headers: { "Access-Control-Allow-Origin": "*" } }
+      );
     }
 
     const lastModified = new Date(certificate.last_modified).toUTCString();
     delete certificate.last_modified;
 
     return Response.json(certificate, {
-      headers: { "Last-Modified": lastModified },
+      headers: {
+        "Last-Modified": lastModified,
+        "Access-Control-Allow-Origin": "*",
+      },
     });
   } catch (e) {
     if (e.message.includes("no such table")) {
       return Response.json(
         { error: "Table not found", tunnels: [] },
-        { status: 404 }
+        { status: 404, headers: { "Access-Control-Allow-Origin": "*" } }
       );
     }
-    return Response.json({ error: e.message }, { status: 500 });
+    return Response.json(
+      { error: e.message },
+      { status: 500, headers: { "Access-Control-Allow-Origin": "*" } }
+    );
   }
 };
 
