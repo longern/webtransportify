@@ -20,7 +20,7 @@ You can use this tool to securely visit your server through WebTransport tunnel.
 Run the server along with the target server.
 
 ```bash
-cargo run -r -- 80
+RUST_LOG=INFO cargo run -r -- 80
 ```
 
 Certificate hash will be printed to the console.
