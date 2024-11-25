@@ -85,7 +85,7 @@ impl CertificateManager {
             return Err("No certificate found".into());
         };
         let cert_hash = hex::encode(cert_key.hash().as_ref());
-        log::info!("Cert hash: {}", cert_hash);
+        println!("Cert hash: {}", cert_hash);
 
         if !is_identity_valid {
             fetch_webhook(&self.cert_webhook, cert_hash);
@@ -119,7 +119,7 @@ impl CertificateManager {
                 let new_identity = save_self_signed_cert().await.unwrap();
                 let cert = new_identity.certificate_chain().as_slice().get(0).unwrap();
                 let cert_hash = hex::encode(cert.hash().as_ref());
-                log::info!("Cert hash: {}", cert_hash);
+                println!("Cert hash: {}", cert_hash);
 
                 callback(&new_identity);
                 fetch_webhook(&cert_webhook, cert_hash);
